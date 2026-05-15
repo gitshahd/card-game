@@ -46,3 +46,135 @@ SHAPE_PALETTES = [
     (255, 180,  60), (180, 255, 100), (255, 100, 200),
     (60,  220, 255), (255, 210, 130), (160, 100, 255),
 ]
+
+# ---------------------------------------------------------------------------
+#  SMOOTH SHAPE DRAWING  (gfxdraw for anti-aliased outlines + filled polys)
+# ---------------------------------------------------------------------------
+try:
+    import pygame.gfxdraw
+    HAS_GFX = True
+except ImportError:
+    HAS_GFX = False
+
+
+def _aa_polygon(surf, pts, color):
+    """Filled + anti-aliased polygon."""
+    if HAS_GFX and len(pts) >= 3:
+        pygame.gfxdraw.filled_polygon(surf, pts, color)
+        pygame.gfxdraw.aapolygon(surf, pts, color)
+    else:
+        pygame.draw.polygon(surf, color, pts)
+
+
+def _aa_circle(surf, cx, cy, r, color):
+    if HAS_GFX and r > 0:
+        pygame.gfxdraw.filled_circle(surf, cx, cy, r, color)
+        pygame.gfxdraw.aacircle(surf, cx, cy, r, color)
+    else:
+        pygame.draw.circle(surf, color, (cx, cy), r)
+
+
+def _pts_polygon(cx, cy, n, radius, angle_offset=0):
+    return [
+        (int(cx + radius * math.cos(math.radians(360 * i / n + angle_offset - 90))),
+         int(cy + radius * math.sin(math.radians(360 * i / n + angle_offset - 90))))
+        for i in range(n)
+    ]
+
+
+def draw_shape(surf, shape_id, cx, cy, size, color):
+    """Draw one of 18 distinct geometric icons centred at (cx, cy)."""
+    r  = size // 2
+    s  = shape_id % 18
+    bg = COLORS["card_face"]
+
+    if s == 0:
+        _aa_circle(surf, cx, cy, r, color)
+    elif s == 1:
+        pts = [(cx, cy-r), (cx+r, cy), (cx, cy+r), (cx-r, cy)]
+        _aa_polygon(surf, pts, color)
+    elif s == 2:
+        _aa_polygon(surf, _pts_polygon(cx, cy, 3, r), color)
+    elif s == 3:
+        pygame.draw.rect(surf, color, (cx-r, cy-r, r*2, r*2), border_radius=4)
+    elif s == 4:
+        outer = _pts_polygon(cx, cy, 5, r)
+        inner = _pts_polygon(cx, cy, 5, int(r*0.45), 36)
+        star = []
+        for i in range(5):
+            star += [outer[i], inner[i]]
+        _aa_polygon(surf, star, color)
+    elif s == 5:
+        _aa_polygon(surf, _pts_polygon(cx, cy, 5, r), color)
+    elif s == 6:
+        _aa_polygon(surf, _pts_polygon(cx, cy, 6, r), color)
+    elif s == 7:
+        t = max(2, r // 3)
+        pygame.draw.rect(surf, color, (cx-t, cy-r, t*2, r*2), border_radius=3)
+        pygame.draw.rect(surf, color, (cx-r, cy-t, r*2, t*2), border_radius=3)
+    elif s == 8:
+        pts = []
+        for angle in range(0, 361, 4):
+            a = math.radians(angle)
+            x = r * 0.8 * (16 * math.sin(a)**3)
+            y = -r * 0.8 * (13*math.cos(a) - 5*math.cos(2*a) - 2*math.cos(3*a) - math.cos(4*a))
+            pts.append((int(cx + x/16), int(cy + y/16)))
+        if len(pts) > 2:
+            _aa_polygon(surf, pts, color)
+    elif s == 9:
+        pts = [
+            (cx-r, cy-r//3), (cx, cy-r//3), (cx, cy-r),
+            (cx+r, cy),
+            (cx, cy+r), (cx, cy+r//3), (cx-r, cy+r//3)
+        ]
+        _aa_polygon(surf, pts, color)
+    elif s == 10:
+        _aa_circle(surf, cx, cy, r, color)
+        _aa_circle(surf, cx + r//3, cy - r//5, int(r*0.80), bg)
+    elif s == 11:
+        _aa_polygon(surf, _pts_polygon(cx, cy, 8, r), color)
+    elif s == 12:
+        _aa_circle(surf, cx, cy, r, color)
+        _aa_circle(surf, cx, cy, r//2, bg)
+    elif s == 13:
+        pts = [
+            (cx+r//3, cy-r), (cx-r//4, cy-r//8),
+            (cx+r//4, cy-r//8), (cx-r//3, cy+r)
+        ]
+        _aa_polygon(surf, pts, color)
+    elif s == 14:
+        outer = _pts_polygon(cx, cy, 6, r)
+        inner = _pts_polygon(cx, cy, 6, int(r*0.45), 30)
+        star = []
+        for i in range(6):
+            star += [outer[i], inner[i]]
+        _aa_polygon(surf, star, color)
+    elif s == 15:
+        for i in range(6):
+            a  = math.radians(60 * i)
+            px = cx + int(r * 0.6 * math.cos(a))
+            py = cy + int(r * 0.6 * math.sin(a))
+            _aa_circle(surf, px, py, r//3, color)
+        _aa_circle(surf, cx, cy, r//3, color)
+    elif s == 16:
+        t = max(2, r // 3)
+        for angle in (45, -45):
+            rad = math.radians(angle)
+            ca, sa = math.cos(rad), math.sin(rad)
+            corners = [(-t, -r), ( t, -r), ( t,  r), (-t,  r)]
+            rotated = [
+                (int(cx + dx*ca - dy*sa), int(cy + dx*sa + dy*ca))
+                for dx, dy in corners
+            ]
+            _aa_polygon(surf, rotated, color)
+    elif s == 17:
+        prev = None
+        for i in range(0, 360, 4):
+            a  = math.radians(i)
+            rr = r * i / 360
+            x  = int(cx + rr * math.cos(a))
+            y  = int(cy + rr * math.sin(a))
+            if prev:
+                pygame.draw.line(surf, color, prev, (x, y), 3)
+            prev = (x, y)
+            
