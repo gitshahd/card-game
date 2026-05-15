@@ -248,3 +248,65 @@ class Card:
                     pygame.draw.circle(surf, dot_c,
                                        (draw_r.x + dx, draw_r.y + dy), 1)
                     
+# ---------------------------------------------------------------------------
+#  BUTTON WIDGET
+# ---------------------------------------------------------------------------
+class Button:
+    def __init__(self, rect, label, font):
+        self.rect    = pygame.Rect(rect)
+        self.label   = label
+        self.font    = font
+        self.hovered = False
+
+    def draw(self, surf):
+        c = COLORS["btn_hover"] if self.hovered else COLORS["btn"]
+        pygame.draw.rect(surf, c, self.rect, border_radius=8)
+        pygame.draw.rect(surf, COLORS["accent"], self.rect, width=2, border_radius=8)
+        txt = self.font.render(self.label, True, COLORS["btn_text"])
+        surf.blit(txt, txt.get_rect(center=self.rect.center))
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            self.hovered = self.rect.collidepoint(event.pos)
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                return True
+        return False
+
+
+# ---------------------------------------------------------------------------
+#  INPUT FIELD WIDGET
+# ---------------------------------------------------------------------------
+class InputField:
+    def __init__(self, rect, default, label, font, min_val=2, max_val=18):
+        self.rect    = pygame.Rect(rect)
+        self.value   = str(default)
+        self.label   = label
+        self.font    = font
+        self.active  = False
+        self.min_val = min_val
+        self.max_val = max_val
+
+    def get_int(self):
+        try:
+            return max(self.min_val, min(self.max_val, int(self.value)))
+        except ValueError:
+            return self.min_val
+
+    def draw(self, surf, label_font):
+        lbl = label_font.render(self.label, True, COLORS["text_dim"])
+        surf.blit(lbl, (self.rect.x, self.rect.y - 24))
+        border_c = COLORS["accent"] if self.active else COLORS["card_border"]
+        pygame.draw.rect(surf, COLORS["card_back"], self.rect, border_radius=6)
+        pygame.draw.rect(surf, border_c, self.rect, width=2, border_radius=6)
+        txt = self.font.render(self.value, True, COLORS["text"])
+        surf.blit(txt, txt.get_rect(center=self.rect.center))
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            self.active = self.rect.collidepoint(event.pos)
+        if event.type == pygame.KEYDOWN and self.active:
+            if event.key == pygame.K_BACKSPACE:
+                self.value = self.value[:-1]
+            elif event.unicode.isdigit() and len(self.value) < 3:
+                self.value += event.unicode
