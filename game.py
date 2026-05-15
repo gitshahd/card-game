@@ -415,3 +415,192 @@ class MemoryScramble:
         self.moves       = 0
         self.particles   = []
         
+    def run(self):
+            while True:
+                self.clock.tick(FPS)
+                events = pygame.event.get()
+                for e in events:
+                    if e.type == pygame.QUIT:
+                        pygame.quit()
+                        sys.exit()
+                    self._handle_event(e)
+                self._update()
+                self._draw()
+
+    def _handle_event(self, e):
+        if self.state == STATE_MENU:
+            self.inp_rows.handle_event(e)
+            self.inp_cols.handle_event(e)
+            self.inp_time.handle_event(e)
+            if self.btn_start.handle_event(e):
+                self._setup_board()
+                self.state = STATE_PLAYING
+
+        elif self.state == STATE_PLAYING:
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and not self.lock_input:
+                self._handle_click(e.pos)
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+                self.state = STATE_MENU
+                self._build_menu()
+
+        elif self.state in (STATE_WIN, STATE_LOSE):
+            if e.type == pygame.KEYDOWN or e.type == pygame.MOUSEBUTTONDOWN:
+                self.state = STATE_MENU
+                self._build_menu()
+
+    def _handle_click(self, pos):
+        for i, card in enumerate(self.cards):
+            if card.rect.collidepoint(pos) and not card.matched and not card.revealed:
+                if i in self.selected:
+                    continue
+                card.revealed = True
+                card.start_flip(True)
+                self.selected.append(i)
+
+                if len(self.selected) == 2:
+                    self.moves += 1
+                    i1, i2 = self.selected
+                    c1, c2 = self.cards[i1], self.cards[i2]
+                    if c1.shape_id == c2.shape_id:
+                        c1.matched = c2.matched = True
+                        self.matched_cnt += 1
+                        self._burst_particles(c1.rect.centerx, c1.rect.centery)
+                        self._burst_particles(c2.rect.centerx, c2.rect.centery)
+                        self.selected = []
+                        if self.matched_cnt == len(self.cards) // 2:
+                            self.state = STATE_WIN
+                    else:
+                        c1.wrong_flash = c2.wrong_flash = 30
+                        self.lock_input = True
+                        self.lock_timer = 70
+                break
+
+    def _update(self):
+        if self.state not in (STATE_PLAYING, STATE_WIN, STATE_LOSE):
+            return
+
+        for card in self.cards:
+            card.update()
+
+        if self.state == STATE_PLAYING:
+            if self.lock_input:
+                self.lock_timer -= 1
+                if self.lock_timer <= 0:
+                    self.lock_input = False
+                    for i in self.selected:
+                        self.cards[i].revealed = False
+                        self.cards[i].start_flip(False)
+                    self.selected = []
+
+            now            = time.time()
+            self.time_left -= now - self.last_tick
+            self.last_tick  = now
+            if self.time_left <= 0:
+                self.time_left = 0
+                self.state = STATE_LOSE
+
+        for p in self.particles:
+            p.update()
+        self.particles = [p for p in self.particles if p.life > 0]
+
+    def _burst_particles(self, x, y):
+        for _ in range(30):
+            self.particles.append(Particle(x, y))
+            
+    def _draw(self):
+        self.screen.fill(COLORS["bg"])
+        self._draw_bg_grid()
+
+        if self.state == STATE_MENU:
+            self._draw_menu()
+        elif self.state == STATE_PLAYING:
+            self._draw_hud()
+            self._draw_cards()
+            for p in self.particles:
+                p.draw(self.screen)
+        elif self.state == STATE_WIN:
+            self._draw_hud()
+            self._draw_cards()
+            for p in self.particles:
+                p.draw(self.screen)
+            self._draw_overlay(" YOU WIN! ",
+                               f"Matched all pairs in {self.moves} moves!",
+                               COLORS["accent2"])
+        elif self.state == STATE_LOSE:
+            self._draw_hud()
+            self._draw_cards()
+            self._draw_overlay(" GAME OVER ",
+                               "Time ran out!  Press any key to retry.",
+                               COLORS["wrong_bdr"])
+
+    def _draw_bg_grid(self):
+        dot_c = (18, 24, 55)
+        for x in range(0, SCREEN_W, 30):
+            for y in range(0, SCREEN_H, 30):
+                pygame.draw.circle(self.screen, dot_c, (x, y), 1)
+
+    def _draw_menu(self):
+        title = self.font_title.render("MEMORY SCRAMBLE", True, COLORS["accent"])
+        sub   = self.font_medium.render("Configure your game below, then press START", True, COLORS["text_dim"])
+        self.screen.blit(title, title.get_rect(center=(SCREEN_W//2, 150)))
+        self.screen.blit(sub,   sub.get_rect(center=(SCREEN_W//2, 220)))
+        pygame.draw.line(self.screen, COLORS["card_border"],
+                         (SCREEN_W//2 - 300, 250), (SCREEN_W//2 + 300, 250), 1)
+
+        self.inp_rows.draw(self.screen, self.font_small)
+        self.inp_cols.draw(self.screen, self.font_small)
+        self.inp_time.draw(self.screen, self.font_small)
+
+        hint = self.font_small.render(
+            "Rows × Cols must be even  |  ESC during game returns here", True, COLORS["text_dim"])
+        self.screen.blit(hint, hint.get_rect(center=(SCREEN_W//2, 480)))
+
+        self.btn_start.draw(self.screen)
+
+        shapes_per_row = 9
+        for i in range(18):
+            px = SCREEN_W//2 - 9*28 + (i % shapes_per_row) * 56 + 28
+            py = 580 + (i // shapes_per_row) * 56
+            draw_shape(self.screen, i, px, py, 36, SHAPE_PALETTES[i])
+
+    def _draw_hud(self):
+        hud_rect = pygame.Rect(0, 0, SCREEN_W, 82)
+        pygame.draw.rect(self.screen, COLORS["panel"], hud_rect)
+        pygame.draw.line(self.screen, COLORS["card_border"], (0, 82), (SCREEN_W, 82), 1)
+
+        t = self.font_medium.render("MEMORY SCRAMBLE", True, COLORS["accent"])
+        self.screen.blit(t, (16, 28))
+
+        pct = self.time_left / self.timeout if self.timeout else 0
+        tc  = COLORS["timer_ok"] if pct > 0.4 else (COLORS["timer_warn"] if pct > 0.2 else COLORS["timer_crit"])
+        secs      = int(self.time_left)
+        timer_txt = self.font_large.render(f"  {secs:>3}s", True, tc)
+        self.screen.blit(timer_txt, timer_txt.get_rect(center=(SCREEN_W//2, 42)))
+
+        n_pairs = len(self.cards) // 2
+        stats   = self.font_medium.render(
+            f"Pairs: {self.matched_cnt}/{n_pairs}   Moves: {self.moves}", True, COLORS["text_dim"])
+        self.screen.blit(stats, stats.get_rect(right=SCREEN_W-16, centery=42))
+
+    def _draw_cards(self):
+        for card in self.cards:
+            card.draw(self.screen)
+
+    def _draw_overlay(self, headline, sub, color):
+        overlay = pygame.Surface((SCREEN_W, SCREEN_H), pygame.SRCALPHA)
+        overlay.fill((*COLORS["overlay"], 200))
+        self.screen.blit(overlay, (0, 0))
+
+        h   = self.font_title.render(headline, True, color)
+        s   = self.font_large.render(sub, True, COLORS["text"])
+        tip = self.font_medium.render("Press any key or click to return to menu", True, COLORS["text_dim"])
+
+        cx = SCREEN_W // 2
+        self.screen.blit(h,   h.get_rect(center=(cx, SCREEN_H//2 - 60)))
+        self.screen.blit(s,   s.get_rect(center=(cx, SCREEN_H//2)))
+        self.screen.blit(tip, tip.get_rect(center=(cx, SCREEN_H//2 + 60)))
+        
+    # ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    game = MemoryScramble()
+    game.run()
