@@ -178,3 +178,73 @@ def draw_shape(surf, shape_id, cx, cy, size, color):
                 pygame.draw.line(surf, color, prev, (x, y), 3)
             prev = (x, y)
             
+# ---------------------------------------------------------------------------
+#  CARD CLASS
+# ---------------------------------------------------------------------------
+class Card:
+    def __init__(self, shape_id, rect):
+        self.shape_id  = shape_id
+        self.color     = SHAPE_PALETTES[shape_id % len(SHAPE_PALETTES)]
+        self.rect      = pygame.Rect(rect)
+        self.matched   = False
+        self.revealed  = False
+
+        self.flip_progress = 0.0
+        self.flip_target   = 0.0
+        self.wrong_flash   = 0
+
+    def start_flip(self, to_front: bool):
+        self.flip_target = 1.0 if to_front else 0.0
+
+    def update(self):
+        if self.wrong_flash > 0:
+            self.wrong_flash -= 1
+
+        diff = self.flip_target - self.flip_progress
+        if abs(diff) <= FLIP_SPEED:
+            self.flip_progress = self.flip_target
+        else:
+            self.flip_progress += FLIP_SPEED if diff > 0 else -FLIP_SPEED
+
+    def is_animating(self):
+        return abs(self.flip_progress - self.flip_target) > 0.001
+
+    def draw(self, surf):
+        r = self.rect
+        angle_deg = self.flip_progress * 180.0
+        scale     = abs(math.cos(math.radians(angle_deg)))
+        w_draw    = max(2, int(r.width * scale))
+        x_off     = (r.width - w_draw) // 2
+        draw_r    = pygame.Rect(r.x + x_off, r.y, w_draw, r.height)
+
+        showing_front = self.flip_progress >= 0.5
+
+        if self.wrong_flash > 0:
+            bg_c  = COLORS["wrong"]
+            bdr_c = COLORS["wrong_bdr"]
+        elif self.matched:
+            bg_c  = COLORS["matched"]
+            bdr_c = COLORS["matched_bdr"]
+        elif showing_front:
+            bg_c  = COLORS["card_face"]
+            bdr_c = COLORS["accent"]
+        else:
+            bg_c  = COLORS["card_back"]
+            bdr_c = COLORS["card_border"]
+
+        pygame.draw.rect(surf, bg_c,  draw_r, border_radius=CARD_RADIUS)
+        pygame.draw.rect(surf, bdr_c, draw_r, width=2, border_radius=CARD_RADIUS)
+
+        if showing_front and w_draw > 20:
+            cx       = draw_r.centerx
+            cy       = draw_r.centery
+            icon_size = int(min(draw_r.width, draw_r.height) * 0.52)
+            draw_shape(surf, self.shape_id, cx, cy, icon_size, self.color)
+        elif not showing_front and w_draw > 20:
+            dot_c = (50, 65, 140)
+            step  = 10
+            for dx in range(step, draw_r.width - step // 2, step):
+                for dy in range(step, draw_r.height - step // 2, step):
+                    pygame.draw.circle(surf, dot_c,
+                                       (draw_r.x + dx, draw_r.y + dy), 1)
+                    
