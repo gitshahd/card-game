@@ -310,3 +310,108 @@ class InputField:
                 self.value = self.value[:-1]
             elif event.unicode.isdigit() and len(self.value) < 3:
                 self.value += event.unicode
+                
+# ---------------------------------------------------------------------------
+#  PARTICLE SYSTEM
+# ---------------------------------------------------------------------------
+class Particle:
+    def __init__(self, x, y):
+        angle = random.uniform(0, 2 * math.pi)
+        speed = random.uniform(2, 8)
+        self.x  = x
+        self.y  = y
+        self.vx = math.cos(angle) * speed
+        self.vy = math.sin(angle) * speed - 3
+        self.life     = random.randint(40, 80)
+        self.max_life = self.life
+        self.color    = random.choice(SHAPE_PALETTES)
+        self.size     = random.randint(3, 7)
+
+    def update(self):
+        self.x  += self.vx
+        self.y  += self.vy
+        self.vy += 0.2
+        self.life -= 1
+
+    def draw(self, surf):
+        alpha = self.life / self.max_life
+        c     = tuple(int(ch * alpha) for ch in self.color)
+        if HAS_GFX and self.size > 0:
+            pygame.gfxdraw.filled_circle(surf, int(self.x), int(self.y), self.size, c)
+        else:
+            pygame.draw.circle(surf, c, (int(self.x), int(self.y)), self.size)
+            
+# ---------------------------------------------------------------------------
+#  GAME STATE MACHINE
+# ---------------------------------------------------------------------------
+STATE_MENU    = "menu"
+STATE_PLAYING = "playing"
+STATE_WIN     = "win"
+STATE_LOSE    = "lose"
+
+
+class MemoryScramble:
+    def __init__(self):
+        pygame.init()
+        pygame.display.set_caption("Memory Scramble")
+        self.screen = pygame.display.set_mode((SCREEN_W, SCREEN_H), pygame.HWSURFACE | pygame.DOUBLEBUF)
+        self.clock  = pygame.time.Clock()
+
+        self.font_title  = pygame.font.SysFont("consolas", 52, bold=True)
+        self.font_large  = pygame.font.SysFont("consolas", 32, bold=True)
+        self.font_medium = pygame.font.SysFont("consolas", 22)
+        self.font_small  = pygame.font.SysFont("consolas", 16)
+
+        self.state     = STATE_MENU
+        self.particles = []
+        self.cards     = []
+
+        self._build_menu()
+
+    def _build_menu(self):
+        cx = SCREEN_W // 2
+        fw, fh = 120, 44
+        self.inp_rows  = InputField((cx-200, 310, fw, fh), 4,  "Rows  (2–8)",   self.font_large, 2, 8)
+        self.inp_cols  = InputField((cx-40,  310, fw, fh), 4,  "Cols  (2–8)",   self.font_large, 2, 8)
+        self.inp_time  = InputField((cx+120, 310, fw, fh), 60, "Time  (sec)",   self.font_large, 10, 300)
+        self.btn_start = Button((cx-90, 400, 180, 52), "START GAME", self.font_medium)
+
+    def _setup_board(self):
+        rows = self.inp_rows.get_int()
+        cols = self.inp_cols.get_int()
+        if (rows * cols) % 2 != 0:
+            cols += 1
+
+        self.rows      = rows
+        self.cols      = cols
+        self.timeout   = self.inp_time.get_int()
+        self.time_left = float(self.timeout)
+        self.last_tick = time.time()
+
+        total     = rows * cols
+        n_shapes  = total // 2
+        shape_ids = list(range(n_shapes)) * 2
+        random.shuffle(shape_ids)
+
+        pad     = 16
+        top_h   = 90
+        avail_w = SCREEN_W - pad * (cols + 1)
+        avail_h = SCREEN_H - top_h - pad * (rows + 1)
+        cw = avail_w // cols
+        ch = avail_h // rows
+
+        self.cards = []
+        for i, sid in enumerate(shape_ids):
+            rr = i // cols
+            cc = i % cols
+            x  = pad + cc * (cw + pad)
+            y  = top_h + pad + rr * (ch + pad)
+            self.cards.append(Card(sid, (x, y, cw, ch)))
+
+        self.selected    = []
+        self.lock_input  = False
+        self.lock_timer  = 0
+        self.matched_cnt = 0
+        self.moves       = 0
+        self.particles   = []
+        
